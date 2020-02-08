@@ -1,12 +1,12 @@
-Unsupervised POS induction using Bayesian HMM
+# Unsupervised POS induction using Bayesian HMM
 
 This is implementation of Bayesian HMM (https://www.aclweb.org/anthology/D10-1056/) using c++.
 
-# Requirement
+## Requirement
 
 - c++ 11
 
-# Build
+## Build
 ```
 mkdir src/build
 cd src/build
@@ -14,12 +14,12 @@ cmake ..
 make
 ```
 
-# Usage
+## Usage
 ```
 ./src/build/bhmm --file data/train.txt
 ```
 
-# TODO
+## TODO
 
 - add save function
 - add python binding
