@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.12.2)
 project(bayesian_hmm CXX)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
-add_executable(a.out main.cpp bayesian_hmm.cpp data_container.cpp)
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+add_executable(bhmm main.cpp bayesian_hmm.cpp data_container.cpp)

@@ -17,8 +17,8 @@ parse(int argc, char *argv[])
         options.add_option("", "", "file", "training text file path (required)", cxxopts::value<std::string>(), "file path");
         options.add_option("", "", "pos", "pos size", cxxopts::value<int>()->default_value("10"), "num");
         options.add_option("", "e", "epoch", "epoch", cxxopts::value<int>()->default_value("100"), "num");
-        options.add_option("", "", "alpha", "hyperparameter (0.0 < alpha, it is better alpha is lower than 1.0)", cxxopts::value<double>()->default_value("0.1"), "num");
-        options.add_option("", "", "beta", "hyperparameter (0.0 < beta, it is better beta is lower than 1.0)", cxxopts::value<double>()->default_value("0.1"), "num");
+        options.add_option("", "", "alpha", "hyperparameter (0.0 < alpha, it is better that alpha is lower than 1.0)", cxxopts::value<double>()->default_value("0.1"), "num");
+        options.add_option("", "", "beta", "hyperparameter (0.0 < beta, it is better that beta is lower than 1.0)", cxxopts::value<double>()->default_value("0.1"), "num");
 
         auto result = options.parse(argc, argv);
 

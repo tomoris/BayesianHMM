@@ -97,7 +97,7 @@ MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdTy
     std::uniform_real_distribution<double> dist(0.0, sum);
     double r = dist(random_generator_);
     sum = 0.0;
-    int sampled_k;
+    int sampled_k = -1;
     for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
     {
         sum += scores[k];
@@ -107,7 +107,8 @@ MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdTy
             break;
         }
     }
-    assert(sampled_k >= SPECIAL_TAG_SIZE && sampled_k < tag_size_);
+    assert(sampled_k >= SPECIAL_TAG_SIZE);
+    assert(sampled_k < tag_size_);
 
     return static_cast<MyTagIdType>(sampled_k);
 }
