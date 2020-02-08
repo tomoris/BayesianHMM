@@ -5,53 +5,16 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <iostream>
 #include <random>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-BayesianHMM::BayesianHMM(const int tag_size, const MyWordIdType vocab_size) : tag_size_(tag_size + SPECIAL_TAG_SIZE), vocab_size_(vocab_size + SPECIAL_TAG_SIZE)
+BayesianHMM::BayesianHMM(const int tag_size, const MyWordIdType vocab_size, const double alpha, const double beta) : tag_size_(tag_size + SPECIAL_TAG_SIZE), vocab_size_(vocab_size + SPECIAL_TAG_SIZE), alpha_(alpha), beta_(beta)
 {
-    vocab_size_ = 100;
-    alpha_ = 0.1;
-    beta_ = 0.1;
-
-    // std::random_device seed_gen;
-    // random_generator_.seed(seed_gen());
-    random_generator_.seed(12345);
-}
-
-void BayesianHMM::Hello()
-{
-    std::cout << "hello" << std::endl;
-    std::vector<MyTagIdType> ngram{2, 3, 4};
-    std::vector<MyTagIdType> tag_sent{BEGIN_TAG_ID, BEGIN_TAG_ID, 2, 3, 4, END_TAG_ID, END_TAG_ID};
-    std::vector<MyWordIdType> word_sent{BEGIN_WORD_ID, BEGIN_WORD_ID, 1, 1, 1, END_WORD_ID, END_WORD_ID};
-    this->addNgramParameter({BEGIN_TAG_ID, BEGIN_TAG_ID, 2});
-    this->addNgramParameter({BEGIN_TAG_ID, 2, 3});
-    this->addNgramParameter(ngram);
-    this->addNgramParameter({3, 4, END_TAG_ID});
-    this->addNgramParameter({4, END_TAG_ID, END_TAG_ID});
-
-    this->addWordEmissionParameter(1, 2);
-    this->addWordEmissionParameter(1, 3);
-    this->addWordEmissionParameter(1, 4);
-
-    this->addNgramParameter({BEGIN_TAG_ID, BEGIN_TAG_ID, 2});
-    this->addNgramParameter({BEGIN_TAG_ID, 2, 3});
-    this->addNgramParameter(ngram);
-    this->addNgramParameter({3, 4, END_TAG_ID});
-    this->addNgramParameter({4, END_TAG_ID, END_TAG_ID});
-
-    this->addWordEmissionParameter(1, 2);
-    this->addWordEmissionParameter(1, 3);
-    this->addWordEmissionParameter(1, 4);
-
-    double score1 = this->calcWordProbGivenTag(1, 4);
-    double score2 = this->calcTagNgramProb(ngram);
-    this->gibbsSamplingTthTag(0 + (n_ - 1), tag_sent, word_sent);
-    score1 = this->calcWordProbGivenTag(1, 4);
-    score2 = this->calcTagNgramProb(ngram);
+    std::random_device seed_gen;
+    random_generator_.seed(seed_gen());
 }
 
 std::string BayesianHMM::join(const std::vector<MyWordIdType> &v, const std::string delim) const
@@ -293,7 +256,6 @@ void BayesianHMM::Train(std::vector<std::vector<MyWordIdType>> &corpus, std::vec
         ioctl(STDOUT_FILENO, TIOCGWINSZ, &winsz);
         const unsigned int bar_width = static_cast<unsigned int>(winsz.ws_col) - static_cast<unsigned int>(static_cast<double>(winsz.ws_col) * 0.2);
         ProgressBar progress_bar(corpus.size(), bar_width);
-        // std::cout << static_cast<unsigned int>(winsz.ws_col) << std::endl;
 
         std::vector<int> rand_vec(corpus.size());
         std::iota(rand_vec.begin(), rand_vec.end(), 0);
@@ -310,7 +272,43 @@ void BayesianHMM::Train(std::vector<std::vector<MyWordIdType>> &corpus, std::vec
             }
         }
         progress_bar.done();
+
+        double score = this->CalcTagScoreGivenCorpus(corpus, tag_corpus);
+        std::cout << "score = " << score << " (lower is better)" << std::endl;
     }
+}
+
+//
+// スコアをエントロピーにすると下がっているようには見えなかった。
+// エントロピーの計算 p * log(p)
+// lower is better
+double BayesianHMM::CalcTagScoreGivenCorpus(const std::vector<std::vector<MyWordIdType>> &corpus, const std::vector<std::vector<MyTagIdType>> &tag_corpus) const
+{
+    double score = 0.0;
+    double word_count = 0.0;
+    for (int i = 0; i < static_cast<int>(corpus.size()); i++)
+    {
+        for (int t = 0; t < static_cast<int>(corpus[i].size()) - 2 * (n_ - 1); t++)
+        {
+            std::vector<double> scores(tag_size_, 0.0);
+            double sum = 0.0;
+            for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
+            {
+                MyWordIdType word_id = corpus[i][t + (n_ - 1)];
+                double score = this->calcTagPosteriorScore(static_cast<MyTagIdType>(k), t, tag_corpus[i], word_id);
+                scores[k] = score;
+                sum += score;
+            }
+            MyTagIdType k = static_cast<MyTagIdType>(tag_corpus[i][t + (n_ - 1)]);
+            double prob = scores[k] / sum;
+            // entropy += prob * std::log2(prob);
+            score += std::log2(prob);
+            word_count += 1.0;
+        }
+    }
+
+    score = -1.0 * score / word_count;
+    return score;
 }
 
 void BayesianHMM::initialize(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus)

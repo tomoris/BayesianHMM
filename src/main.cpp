@@ -12,15 +12,17 @@ parse(int argc, char *argv[])
 {
     try
     {
-        cxxopts::Options options(argv[0], " - example command line options");
+        cxxopts::Options options(argv[0], "Bayesian HMM implementation");
         options.add_option("", "", "help", "Print help", cxxopts::value<bool>(), "");
         options.add_option("", "", "file", "training text file path (required)", cxxopts::value<std::string>(), "file path");
         options.add_option("", "", "pos", "pos size", cxxopts::value<int>()->default_value("10"), "num");
         options.add_option("", "e", "epoch", "epoch", cxxopts::value<int>()->default_value("100"), "num");
+        options.add_option("", "", "alpha", "hyperparameter (0.0 < alpha, it is better alpha is lower than 1.0)", cxxopts::value<double>()->default_value("0.1"), "num");
+        options.add_option("", "", "beta", "hyperparameter (0.0 < beta, it is better beta is lower than 1.0)", cxxopts::value<double>()->default_value("0.1"), "num");
 
         auto result = options.parse(argc, argv);
 
-        if (result.count("help") || !result.count("file"))
+        if (result.count("help") || !result.count("file") || result["alpha"].as<double>() <= 0.0 || result["beta"].as<double>() <= 0.0)
         {
             std::cout << options.help() << std::endl;
             exit(0);
@@ -42,15 +44,16 @@ int main(int argc, char *argv[])
     std::string file_name = cmd["file"].as<std::string>();
     const int epoch = cmd["epoch"].as<int>();
     const int pos_size = cmd["pos"].as<int>();
+    const double alpha = cmd["alpha"].as<double>();
+    const double beta = cmd["beta"].as<double>();
 
     std::cout << "loading input file" << std::endl;
     DataContainer data_container(file_name, " ");
 
     std::cout << "building model" << std::endl;
-    BayesianHMM hmm(pos_size, data_container.GetWordVocabSize());
+    BayesianHMM hmm(pos_size, data_container.GetWordVocabSize(), alpha, beta);
 
     std::cout << "training" << std::endl;
     hmm.Train(data_container.corpus, data_container.tag_corpus, epoch);
     std::cout << "end training" << std::endl;
-    hmm.Hello();
 }

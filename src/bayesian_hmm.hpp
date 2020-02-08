@@ -11,9 +11,9 @@ const std::string DELIMITER = "-";
 class BayesianHMM
 {
 public:
-    BayesianHMM(const int tag_size, const MyWordIdType vocab_size);
-    void Hello();
+    BayesianHMM(const int tag_size, const MyWordIdType vocab_size, const double alpha, const double beta);
     void Train(std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int epoch);
+    double CalcTagScoreGivenCorpus(const std::vector<std::vector<MyWordIdType>> &corpus, const std::vector<std::vector<MyTagIdType>> &tag_corpus) const;
 
 private:
     const int n_ = NGRAM_SIZE;
