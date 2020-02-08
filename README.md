@@ -5,6 +5,7 @@ This is implementation of Bayesian HMM (https://www.aclweb.org/anthology/D10-105
 ## Requirement
 
 - c++ 11
+- CMake
 
 ## Build
 ```
