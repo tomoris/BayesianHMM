@@ -22,7 +22,6 @@ void DataContainer::load(const std::string file_name, const std::string delimite
 
     while (getline(ifs, str))
     {
-        std::cout << str << std::endl;
         auto tokens = this->split(str, delimiter);
         std::vector<MyWordIdType> token_ids(ngram_size_ - 1, BEGIN_WORD_ID);
         std::vector<MyTagIdType> tag_sent(ngram_size_ - 1, BEGIN_TAG_ID);
@@ -60,7 +59,7 @@ std::vector<std::string> DataContainer::split(const std::string str, const std::
     long l = tstr.length(), sl = delimiter.length();
     std::string::size_type pos = 0, prev = 0;
 
-    for (; pos < l && (pos = tstr.find(delimiter, pos)) != std::string::npos; prev = (pos += sl))
+    for (; pos < static_cast<std::string::size_type>(l) && (pos = tstr.find(delimiter, pos)) != std::string::npos; prev = (pos += sl))
     {
         result.emplace_back(tstr, prev, pos - prev);
     }

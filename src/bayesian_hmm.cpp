@@ -1,10 +1,14 @@
 
 #include "bayesian_hmm.hpp"
 
+#include "ProgressBar.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <random>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 BayesianHMM::BayesianHMM(const int tag_size, const MyWordIdType vocab_size) : tag_size_(tag_size + SPECIAL_TAG_SIZE), vocab_size_(vocab_size + SPECIAL_TAG_SIZE)
 {
@@ -68,7 +72,7 @@ std::string BayesianHMM::join(const std::vector<MyWordIdType> &v, const std::str
 // ここはスムージングしているのか不明
 void BayesianHMM::addNgramParameter(const std::vector<MyTagIdType> &ngram)
 {
-    assert(ngram.size() == n_);
+    assert(static_cast<int>(ngram.size()) == n_);
 
     for (int i = 0; i < n_; i++)
     {
@@ -83,7 +87,7 @@ void BayesianHMM::addNgramParameter(const std::vector<MyTagIdType> &ngram)
 // ここはスムージングしているのか不明
 void BayesianHMM::removeNgramParameter(const std::vector<MyTagIdType> &ngram)
 {
-    assert(ngram.size() == n_);
+    assert(static_cast<int>(ngram.size()) == n_);
 
     for (int i = 0; i < n_; i++)
     {
@@ -149,7 +153,7 @@ MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdTy
 void BayesianHMM::gibbsSamplingTthTag(const int t, std::vector<MyTagIdType> &tag_sent, const std::vector<MyWordIdType> &word_sent)
 {
     assert(t >= 0);
-    assert(t + 2 < tag_sent.size());
+    assert(t + 2 < static_cast<int>(tag_sent.size()));
     assert(word_sent.size() == tag_sent.size());
     // t-th tag に関連するパラメータの削除
     // (tag_{t-2}, tag_{t-1}, tag_{t}), (tag_{t-1}, tag_{t}, tag_{t+1}), (tag_{t}, tag_{t+1}, tag_{t+2})
@@ -203,7 +207,7 @@ double BayesianHMM::calcWordProbGivenTag(const MyWordIdType word_id, const MyTag
 
 double BayesianHMM::calcTagNgramProb(const std::vector<MyTagIdType> &ngram, const double add_denominator, const double add_numerator) const
 {
-    assert(ngram.size() == n_);
+    assert(static_cast<int>(ngram.size()) == n_);
     assert(add_denominator >= 0.0);
     assert(add_numerator >= 0.0);
     assert(add_denominator >= add_numerator);
@@ -285,26 +289,36 @@ void BayesianHMM::Train(std::vector<std::vector<MyWordIdType>> &corpus, std::vec
     this->initialize(corpus, tag_corpus);
     for (int e = 0; e < epoch; e++)
     {
+        struct winsize winsz;
+        ioctl(STDOUT_FILENO, TIOCGWINSZ, &winsz);
+        const unsigned int bar_width = static_cast<unsigned int>(winsz.ws_col) - static_cast<unsigned int>(static_cast<double>(winsz.ws_col) * 0.2);
+        ProgressBar progress_bar(corpus.size(), bar_width);
+        // std::cout << static_cast<unsigned int>(winsz.ws_col) << std::endl;
+
         std::vector<int> rand_vec(corpus.size());
         std::iota(rand_vec.begin(), rand_vec.end(), 0);
         std::shuffle(rand_vec.begin(), rand_vec.end(), random_generator_);
-        for (int i = 0; i < corpus.size(); i++)
+        for (int i = 0; i < static_cast<int>(corpus.size()); i++)
         {
+            ++progress_bar;
+            progress_bar.display();
+
             int r = rand_vec[i];
-            for (int t = 0; t < corpus[r].size() - 2 * (n_ - 1); t++)
+            for (int t = 0; t < static_cast<int>(corpus[r].size()) - 2 * (n_ - 1); t++)
             {
                 this->gibbsSamplingTthTag(t, tag_corpus[r], corpus[r]);
             }
         }
+        progress_bar.done();
     }
 }
 
 void BayesianHMM::initialize(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus)
 {
     std::uniform_int_distribution<int> dist(SPECIAL_TAG_SIZE, tag_size_);
-    for (int i = 0; i < tag_corpus.size(); i++)
+    for (int i = 0; i < static_cast<int>(tag_corpus.size()); i++)
     {
-        for (int t = n_ - 1; t < tag_corpus[i].size() - (n_ - 1); t++)
+        for (int t = n_ - 1; t < static_cast<int>(tag_corpus[i].size()) - (n_ - 1); t++)
         {
             MyTagIdType random_k = static_cast<MyTagIdType>(dist(random_generator_));
             tag_corpus[i][t] = random_k;
@@ -314,7 +328,7 @@ void BayesianHMM::initialize(const std::vector<std::vector<MyWordIdType>> &corpu
             this->addNgramParameter(ngram);
             this->addWordEmissionParameter(corpus[i][t], random_k);
         }
-        for (int t = tag_corpus[i].size() - (n_ - 1); t < tag_corpus[i].size(); t++)
+        for (int t = static_cast<int>(tag_corpus[i].size()) - (n_ - 1); t < static_cast<int>(tag_corpus[i].size()); t++)
         {
             std::vector<MyTagIdType> ngram(n_);
             copy(tag_corpus[i].begin() + t - (n_ - 1), tag_corpus[i].begin() + t + 1, ngram.begin());
