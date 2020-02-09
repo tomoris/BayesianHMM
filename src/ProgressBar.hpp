@@ -64,8 +64,12 @@ public:
             else
                 std::cout << incomplete_char;
         }
+        // std::cout << "] " << int(progress * 100.0) << "% "
+        //           << float(time_elapsed) / 1000.0 << "s\r";
         std::cout << "] " << int(progress * 100.0) << "% "
+                  << "(" << ticks << "/" << total_ticks << ") "
                   << float(time_elapsed) / 1000.0 << "s\r";
+
         std::cout.flush();
     }
 

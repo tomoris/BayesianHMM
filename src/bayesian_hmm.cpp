@@ -8,8 +8,6 @@
 #include <cmath>
 #include <iostream>
 #include <random>
-#include <sys/ioctl.h>
-#include <unistd.h>
 
 BayesianHMM::BayesianHMM(const int tag_size, const MyWordIdType vocab_size, const double alpha, const double beta) : tag_size_(tag_size + SPECIAL_TAG_SIZE), vocab_size_(vocab_size + SPECIAL_TAG_SIZE), alpha_(alpha), beta_(beta)
 {
@@ -253,9 +251,7 @@ void BayesianHMM::Train(std::vector<std::vector<MyWordIdType>> &corpus, std::vec
     this->initialize(corpus, tag_corpus);
     for (int e = 0; e < epoch; e++)
     {
-        struct winsize winsz;
-        ioctl(STDOUT_FILENO, TIOCGWINSZ, &winsz);
-        const unsigned int bar_width = static_cast<unsigned int>(winsz.ws_col) - static_cast<unsigned int>(static_cast<double>(winsz.ws_col) * 0.2);
+        const unsigned int bar_width = 40;
         ProgressBar progress_bar(corpus.size(), bar_width);
 
         std::vector<int> rand_vec(corpus.size());

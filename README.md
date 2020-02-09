@@ -1,9 +1,7 @@
 # Unsupervised POS induction using Bayesian HMM
-
 This is implementation of Bayesian HMM (https://www.aclweb.org/anthology/D10-1056/) using c++.
 
 ## Requirement
-
 - C++ 11
 - CMake
 
@@ -21,8 +19,10 @@ make
 ```
 
 ## TODO
-
 - add save function
 - add python binding
 - add hyperparamer inference function
 - extend to semi-supervised manner
+
+## License
+MIT
