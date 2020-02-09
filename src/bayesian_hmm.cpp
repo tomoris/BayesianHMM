@@ -31,9 +31,11 @@ std::string BayesianHMM::join(const std::vector<MyWordIdType> &v, const std::str
 }
 
 // ここはスムージングしているのか不明
-void BayesianHMM::addNgramParameter(const std::vector<MyTagIdType> &ngram)
+void BayesianHMM::addNgramParameter(const std::vector<MyTagIdType> &ngram, const int recursive)
 {
     assert(static_cast<int>(ngram.size()) == n_);
+    assert(static_cast<int>(ngram.size()) >= recursive);
+    assert(recursive >= 1);
 
     for (int i = 0; i < n_; i++)
     {
@@ -42,13 +44,19 @@ void BayesianHMM::addNgramParameter(const std::vector<MyTagIdType> &ngram)
         std::string ngram_string = this->join(tmp, DELIMITER);
         tag_ngram_count_.emplace(ngram_string, 0);
         tag_ngram_count_[ngram_string] += 1;
+        if (i >= recursive - 1)
+        {
+            break;
+        }
     }
 }
 
 // ここはスムージングしているのか不明
-void BayesianHMM::removeNgramParameter(const std::vector<MyTagIdType> &ngram)
+void BayesianHMM::removeNgramParameter(const std::vector<MyTagIdType> &ngram, const int recursive)
 {
     assert(static_cast<int>(ngram.size()) == n_);
+    assert(static_cast<int>(ngram.size()) >= recursive);
+    assert(recursive >= 1);
 
     for (int i = 0; i < n_; i++)
     {
@@ -60,6 +68,10 @@ void BayesianHMM::removeNgramParameter(const std::vector<MyTagIdType> &ngram)
         if (tag_ngram_count_[ngram_string] == 0)
         {
             tag_ngram_count_.erase(ngram_string);
+        }
+        if (i >= recursive - 1)
+        {
+            break;
         }
     }
 }
@@ -123,14 +135,13 @@ void BayesianHMM::gibbsSamplingTthTag(const int t, std::vector<MyTagIdType> &tag
     {
         std::vector<MyTagIdType> ngram(n_);
         copy(tag_sent.begin() + t + i, tag_sent.begin() + t + i + n_, ngram.begin());
-        this->removeNgramParameter(ngram);
+        this->removeNgramParameter(ngram, (n_ - i));
     }
 
     this->removeWordEmissionParameter(word_sent[t + 2], tag_sent[t + 2]);
 
     MyTagIdType sampled_k = this->samplingTthTag(t, tag_sent, word_sent[t + 2]);
     tag_sent[t + 2] = sampled_k;
-
     this->addWordEmissionParameter(word_sent[t + 2], tag_sent[t + 2]);
 
     // t-th tag に関連するパラメータの追加
@@ -139,7 +150,7 @@ void BayesianHMM::gibbsSamplingTthTag(const int t, std::vector<MyTagIdType> &tag
     {
         std::vector<MyTagIdType> ngram(n_);
         copy(tag_sent.begin() + t + i, tag_sent.begin() + t + i + n_, ngram.begin());
-        this->addNgramParameter(ngram);
+        this->addNgramParameter(ngram, (n_ - i));
     }
 }
 
@@ -313,6 +324,11 @@ void BayesianHMM::initialize(const std::vector<std::vector<MyWordIdType>> &corpu
     std::uniform_int_distribution<int> dist(SPECIAL_TAG_SIZE, tag_size_);
     for (int i = 0; i < static_cast<int>(tag_corpus.size()); i++)
     {
+        for (int t = 0; t < n_ - 1; t++)
+        {
+            assert(tag_corpus[i][t] == BEGIN_TAG_ID);
+            assert(corpus[i][t] == BEGIN_WORD_ID);
+        }
         for (int t = n_ - 1; t < static_cast<int>(tag_corpus[i].size()) - (n_ - 1); t++)
         {
             MyTagIdType random_k = static_cast<MyTagIdType>(dist(random_generator_));
@@ -320,14 +336,16 @@ void BayesianHMM::initialize(const std::vector<std::vector<MyWordIdType>> &corpu
 
             std::vector<MyTagIdType> ngram(n_);
             copy(tag_corpus[i].begin() + t - (n_ - 1), tag_corpus[i].begin() + t + 1, ngram.begin());
-            this->addNgramParameter(ngram);
+            this->addNgramParameter(ngram, n_);
             this->addWordEmissionParameter(corpus[i][t], random_k);
         }
         for (int t = static_cast<int>(tag_corpus[i].size()) - (n_ - 1); t < static_cast<int>(tag_corpus[i].size()); t++)
         {
+            assert(tag_corpus[i][t] == END_TAG_ID);
+            assert(corpus[i][t] == END_WORD_ID);
             std::vector<MyTagIdType> ngram(n_);
             copy(tag_corpus[i].begin() + t - (n_ - 1), tag_corpus[i].begin() + t + 1, ngram.begin());
-            this->addNgramParameter(ngram);
+            this->addNgramParameter(ngram, n_);
         }
     }
 }

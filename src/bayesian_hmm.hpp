@@ -28,8 +28,8 @@ private:
     std::mt19937 random_generator_;
 
     std::string join(const std::vector<MyTagIdType> &v, const std::string delim = "") const;
-    void addNgramParameter(const std::vector<MyTagIdType> &ngram);
-    void removeNgramParameter(const std::vector<MyTagIdType> &ngram);
+    void addNgramParameter(const std::vector<MyTagIdType> &ngram, const int recursive);
+    void removeNgramParameter(const std::vector<MyTagIdType> &ngram, const int recursive);
     void addWordEmissionParameter(const MyWordIdType word_id, const MyTagIdType k);
     void removeWordEmissionParameter(const MyWordIdType word_id, const MyTagIdType k);
     MyTagIdType samplingTthTag(const int t, const std::vector<MyTagIdType> &tag_sent, const MyWordIdType word_id);
