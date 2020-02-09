@@ -16,7 +16,7 @@ void DataContainer::load(const std::string file_name, const std::string delimite
     std::string str;
     if (ifs.fail())
     {
-        std::cerr << "Failed to open file." << std::endl;
+        std::cerr << "Failed to open " << file_name << std::endl;
         exit(1);
     }
 
