@@ -255,7 +255,7 @@ double BayesianHMM::calcTagPosteriorScore(const MyTagIdType k, const int t, cons
     return score;
 }
 
-void BayesianHMM::Train(std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int epoch)
+void BayesianHMM::Train(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int epoch)
 {
     assert(corpus.size() == tag_corpus.size());
 

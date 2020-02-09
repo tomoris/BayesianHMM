@@ -51,9 +51,11 @@ int main(int argc, char *argv[])
     DataContainer data_container(file_name, " ");
 
     std::cout << "building model" << std::endl;
+    std::cout << data_container.tag_corpus[0][3] << std::endl;
     BayesianHMM hmm(pos_size, data_container.GetWordVocabSize(), alpha, beta);
 
     std::cout << "training" << std::endl;
     hmm.Train(data_container.corpus, data_container.tag_corpus, epoch);
+    std::cout << data_container.tag_corpus[0][3] << std::endl;
     std::cout << "end training" << std::endl;
 }
