@@ -9,13 +9,16 @@ This is implementation of Bayesian HMM (https://www.aclweb.org/anthology/D10-105
 ```
 mkdir src/build
 cd src/build
-cmake ..
+cmake -DUSE_PARALLEL_MODE=TRUE -DCMAKE_BUILD_TYPE=Release ..
 make
 make install
 ```
 You can get python bindings if you want.
 ```
-cmake -DBUILD_PYTHON_MODULE=TRUE -DPYTHON_EXECUTABLE=`which python` ..
+git submodule update --init --recursive
+mkdir src/build
+cd src/build
+cmake -DUSE_PARALLEL_MODE=TRUE -DBUILD_PYTHON_MODULE=TRUE -DPYTHON_EXECUTABLE=`which python` -DCMAKE_BUILD_TYPE=Release ..
 make
 make install
 ```

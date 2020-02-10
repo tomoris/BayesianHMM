@@ -6,9 +6,9 @@
 
 namespace py = pybind11;
 
-std::vector<std::vector<MyTagIdType>> BayesianHMM::TrainForPython(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int epoch)
+std::vector<std::vector<MyTagIdType>> BayesianHMM::TrainForPython(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int epoch, const int max_threads)
 {
-    this->Train(corpus, tag_corpus, epoch);
+    this->Train(corpus, tag_corpus, epoch, max_threads);
     return tag_corpus;
 }
 

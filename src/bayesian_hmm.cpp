@@ -7,7 +7,12 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <omp.h>
 #include <random>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 BayesianHMM::BayesianHMM(const int tag_size, const MyWordIdType vocab_size, const double alpha, const double beta) : tag_size_(tag_size + SPECIAL_TAG_SIZE), vocab_size_(vocab_size + SPECIAL_TAG_SIZE), alpha_(alpha), beta_(beta)
 {
@@ -30,7 +35,6 @@ std::string BayesianHMM::join(const std::vector<MyWordIdType> &v, const std::str
     return s;
 }
 
-// ここはスムージングしているのか不明
 void BayesianHMM::addNgramParameter(const std::vector<MyTagIdType> &ngram, const int recursive)
 {
     assert(static_cast<int>(ngram.size()) == n_);
@@ -51,7 +55,6 @@ void BayesianHMM::addNgramParameter(const std::vector<MyTagIdType> &ngram, const
     }
 }
 
-// ここはスムージングしているのか不明
 void BayesianHMM::removeNgramParameter(const std::vector<MyTagIdType> &ngram, const int recursive)
 {
     assert(static_cast<int>(ngram.size()) == n_);
@@ -94,10 +97,14 @@ void BayesianHMM::removeWordEmissionParameter(const MyWordIdType word_id, const 
     }
 }
 
-MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdType> &tag_sent, const MyWordIdType word_id)
+MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdType> &tag_sent, const MyWordIdType word_id, const int max_threads)
 {
     std::vector<double> scores(tag_size_, 0.0);
     double sum = 0.0;
+    #ifdef _OPENMP
+    #pragma omp declare reduction(vec_double_plus: std::vector<double>: std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), std::plus <double>())) initializer(omp_priv = omp_orig)
+    #pragma omp parallel for reduction(+: sum) reduction(vec_double_plus: scores) num_threads(max_threads)
+    #endif
     for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
     {
         double score = this->calcTagPosteriorScore(static_cast<MyTagIdType>(k), t, tag_sent, word_id);
@@ -124,7 +131,7 @@ MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdTy
 }
 
 // 実際のt+2番目のタグをサンプリング(BEGINの分を2つ文頭に足している,trigramの場合)
-void BayesianHMM::gibbsSamplingTthTag(const int t, std::vector<MyTagIdType> &tag_sent, const std::vector<MyWordIdType> &word_sent)
+void BayesianHMM::gibbsSamplingTthTag(const int t, std::vector<MyTagIdType> &tag_sent, const std::vector<MyWordIdType> &word_sent, const int max_threads)
 {
     assert(t >= 0);
     assert(t + 2 < static_cast<int>(tag_sent.size()));
@@ -140,7 +147,7 @@ void BayesianHMM::gibbsSamplingTthTag(const int t, std::vector<MyTagIdType> &tag
 
     this->removeWordEmissionParameter(word_sent[t + 2], tag_sent[t + 2]);
 
-    MyTagIdType sampled_k = this->samplingTthTag(t, tag_sent, word_sent[t + 2]);
+    MyTagIdType sampled_k = this->samplingTthTag(t, tag_sent, word_sent[t + 2], max_threads);
     tag_sent[t + 2] = sampled_k;
     this->addWordEmissionParameter(word_sent[t + 2], tag_sent[t + 2]);
 
@@ -255,9 +262,16 @@ double BayesianHMM::calcTagPosteriorScore(const MyTagIdType k, const int t, cons
     return score;
 }
 
-void BayesianHMM::Train(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int epoch)
+void BayesianHMM::Train(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int epoch, const int max_threads)
 {
-    assert(corpus.size() == tag_corpus.size());
+    // python binding のために書き換え
+    // assert(corpus.size() == tag_corpus.size());
+    if (corpus.size() != tag_corpus.size())
+    {
+        std::cerr << "corpus size error" << std::endl;
+        std::cerr << "corpus size = " << corpus.size() << " tag_corpus size = " << tag_corpus.size() << std::endl;
+        exit(1);
+    }
 
     this->initialize(corpus, tag_corpus);
     for (int e = 0; e < epoch; e++)
@@ -273,16 +287,17 @@ void BayesianHMM::Train(const std::vector<std::vector<MyWordIdType>> &corpus, st
             ++progress_bar;
             progress_bar.display();
 
-            int r = rand_vec[i];
+            const int r = rand_vec[i];
             for (int t = 0; t < static_cast<int>(corpus[r].size()) - 2 * (n_ - 1); t++)
             {
-                this->gibbsSamplingTthTag(t, tag_corpus[r], corpus[r]);
+                this->gibbsSamplingTthTag(t, tag_corpus[r], corpus[r], max_threads);
             }
         }
         progress_bar.done();
 
-        double score = this->CalcTagScoreGivenCorpus(corpus, tag_corpus);
-        std::cout << "score = " << score << " (lower is better)" << std::endl;
+        const double score = this->CalcTagScoreGivenCorpus(corpus, tag_corpus, max_threads);
+        std::cout << "epoch = " << e << " "
+                  << "score = " << score << " (lower is better)" << std::endl;
     }
 }
 
@@ -290,7 +305,7 @@ void BayesianHMM::Train(const std::vector<std::vector<MyWordIdType>> &corpus, st
 // スコアをエントロピーにすると下がっているようには見えなかった。
 // エントロピーの計算 p * log(p)
 // lower is better
-double BayesianHMM::CalcTagScoreGivenCorpus(const std::vector<std::vector<MyWordIdType>> &corpus, const std::vector<std::vector<MyTagIdType>> &tag_corpus) const
+double BayesianHMM::CalcTagScoreGivenCorpus(const std::vector<std::vector<MyWordIdType>> &corpus, const std::vector<std::vector<MyTagIdType>> &tag_corpus, const int max_threads) const
 {
     double score = 0.0;
     double word_count = 0.0;
@@ -300,6 +315,10 @@ double BayesianHMM::CalcTagScoreGivenCorpus(const std::vector<std::vector<MyWord
         {
             std::vector<double> scores(tag_size_, 0.0);
             double sum = 0.0;
+            #ifdef _OPENMP
+            #pragma omp declare reduction(vec_double_plus: std::vector<double>: std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), std::plus <double>())) initializer(omp_priv = omp_orig)
+            #pragma omp parallel for reduction(+: sum) reduction(vec_double_plus: scores) num_threads(max_threads)
+            #endif
             for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
             {
                 MyWordIdType word_id = corpus[i][t + (n_ - 1)];
@@ -326,11 +345,33 @@ void BayesianHMM::initialize(const std::vector<std::vector<MyWordIdType>> &corpu
     {
         for (int t = 0; t < n_ - 1; t++)
         {
-            assert(tag_corpus[i][t] == BEGIN_TAG_ID);
-            assert(corpus[i][t] == BEGIN_WORD_ID);
+            // python binding のために書き換え
+            // assert(tag_corpus[i][t] == BEGIN_TAG_ID);
+            // assert(corpus[i][t] == BEGIN_WORD_ID);
+            if (corpus[i][t] != BEGIN_WORD_ID)
+            {
+                std::cerr << "corpus BEGIN word error" << std::endl;
+                std::cerr << "corpus[t] = " << corpus[i][t] << " (t = " << t << ")" << std::endl;
+                std::cerr << "need corpus[t] = " << BEGIN_WORD_ID << std::endl;
+                exit(1);
+            }
+            if (tag_corpus[i][t] != BEGIN_TAG_ID)
+            {
+                std::cerr << "tag_corpus BEGIN tag error" << std::endl;
+                std::cerr << "tag_corpus[t] = " << corpus[i][t] << " (t = " << t << ")" << std::endl;
+                std::cerr << "need tag_corpus[t] = " << BEGIN_TAG_ID << std::endl;
+                exit(1);
+            }
         }
         for (int t = n_ - 1; t < static_cast<int>(tag_corpus[i].size()) - (n_ - 1); t++)
         {
+            if (corpus[i][t] == BEGIN_WORD_ID || corpus[i][t] == END_WORD_ID)
+            {
+                std::cerr << "corpus word error" << std::endl;
+                std::cerr << "corpus[t] = " << corpus[i][t] << " (t = " << t << ")" << std::endl;
+                std::cerr << "need corpus[t] != " << BEGIN_WORD_ID << " or " << END_WORD_ID << std::endl;
+                exit(1);
+            }
             MyTagIdType random_k = static_cast<MyTagIdType>(dist(random_generator_));
             tag_corpus[i][t] = random_k;
 
@@ -341,8 +382,24 @@ void BayesianHMM::initialize(const std::vector<std::vector<MyWordIdType>> &corpu
         }
         for (int t = static_cast<int>(tag_corpus[i].size()) - (n_ - 1); t < static_cast<int>(tag_corpus[i].size()); t++)
         {
-            assert(tag_corpus[i][t] == END_TAG_ID);
-            assert(corpus[i][t] == END_WORD_ID);
+            // python binding のために書き換え
+            // assert(tag_corpus[i][t] == END_TAG_ID);
+            // assert(corpus[i][t] == END_WORD_ID);
+            if (corpus[i][t] != END_WORD_ID)
+            {
+                std::cerr << "corpus END word error" << std::endl;
+                std::cerr << "corpus[t] = " << corpus[i][t] << " (t = " << t << ")" << std::endl;
+                std::cerr << "need corpus[t] = " << END_WORD_ID << std::endl;
+                exit(1);
+            }
+            if (tag_corpus[i][t] != END_TAG_ID)
+            {
+                std::cerr << "tag_corpus END tag error" << std::endl;
+                std::cerr << "tag_corpus[t] = " << corpus[i][t] << " (t = " << t << ")" << std::endl;
+                std::cerr << "need tag_corpus[t] = " << END_TAG_ID << std::endl;
+                exit(1);
+            }
+
             std::vector<MyTagIdType> ngram(n_);
             copy(tag_corpus[i].begin() + t - (n_ - 1), tag_corpus[i].begin() + t + 1, ngram.begin());
             this->addNgramParameter(ngram, n_);
