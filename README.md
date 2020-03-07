@@ -32,6 +32,14 @@ This is usage of python binding.
 python bin/main.py --file data/train.txt
 ```
 
+### Example
+Example of "Alice in Wonderland".
+- Hyperparameters
+  - epoch: 1000 (but we need bigger number for convergence.)
+  - others: default parameters
+
+![heatmap](https://user-images.githubusercontent.com/19759196/76062135-658c1a80-5fc8-11ea-8d73-e777f0f47700.png)
+
 ## TODO
 - add save function
 - add hyperparamer inference function
