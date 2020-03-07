@@ -19,15 +19,17 @@ END_TAG_ID = 1
 BEGIN_WORD_ID = 0
 END_WORD_ID = 0
 UNK_WORD_ID = 1
+w2i = {"<unk>": UNK_WORD_ID}
+pos2i = {}
 vocab_size = 2
 
 n = 3
 
 
-def load_corpus(file_name, delimiter = " ", pos_delimiter = None):
+def load_corpus(file_name, delimiter = " ", pos_delimiter = None, train=True):
     global vocab_size
-    w2i = {}
-    pos2i = {}
+    global w2i
+    global pos2i
     corpus = []
     tag_corpus = []
     pos_corpus = []
@@ -45,11 +47,13 @@ def load_corpus(file_name, delimiter = " ", pos_delimiter = None):
                 word = token
                 pos = None
             if word not in w2i:
-                w2i[word] = vocab_size
-                vocab_size += 1
+                if train:
+                    w2i[word] = vocab_size
+                    vocab_size += 1
             if pos not in pos2i:
-                pos2i[pos] = len(pos2i)
-            corpus[-1].append(w2i[word])
+                if train:
+                    pos2i[pos] = len(pos2i)
+            corpus[-1].append(w2i.get(word, UNK_WORD_ID))
             tag_corpus[-1].append(2)
             pos_corpus[-1].append(pos2i[pos])
         corpus[-1] += [END_WORD_ID for i in range(n - 1)]
@@ -104,6 +108,7 @@ def show_frequent_co_occurrence(corpus, tag_corpus, pos_corpus, w2i, pos2i, tag_
 def main():
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--file', help='training file', type=str, required=True)
+    parser.add_argument('--testfile', help='test file', type=str, default=None)
     parser.add_argument('--delimiter', help='token delimiter', type=str, default=" ")
     parser.add_argument('--posdelimiter', help='pos delimiter', type=str, default=None)
     parser.add_argument('--tag', help='tag size', type=int, default=10)
@@ -114,16 +119,24 @@ def main():
     args = parser.parse_args()
 
     corpus, tag_corpus, pos_corpus, w2i, pos2i = load_corpus(args.file, args.delimiter, args.posdelimiter)
+    if args.testfile is not None:
+        test_corpus, test_tag_corpus, test_pos_corpus, w2i, pos2i = load_corpus(args.testfile, args.delimiter, args.posdelimiter)
     global vocab_size
     hmm = py_bhmm.BayesianHMM(args.tag, vocab_size, args.alpha, args.beta)
     tag_corpus = hmm.Train(corpus, tag_corpus, args.epoch, args.threads)
+
+    if args.testfile is None:
+        tag_corpus = hmm.Test(corpus, tag_corpus, args.threads)
+        show_frequent_co_occurrence(corpus, tag_corpus, pos_corpus, w2i, pos2i, args.tag)
+    else:
+        test_tag_corpus = hmm.Test(test_corpus, test_tag_corpus, args.threads)
+        show_frequent_co_occurrence(test_corpus, test_tag_corpus, test_pos_corpus, w2i, pos2i, args.tag)
 
     # or you can rewrite this
     # data_container = py_bhmm.DataContainer(args.file, " ")
     # hmm = py_bhmm.BayesianHMM(args.pos, data_container.GetWordVocabSize(), args.alpha, args.beta)
     # data_container.tag_corpus = hmm.Train(data_container.corpus, data_container.tag_corpus, args.epoch, args.threads)
 
-    show_frequent_co_occurrence(corpus, tag_corpus, pos_corpus, w2i, pos2i, args.tag)
     return
 
 

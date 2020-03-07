@@ -97,31 +97,44 @@ void BayesianHMM::removeWordEmissionParameter(const MyWordIdType word_id, const 
     }
 }
 
-MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdType> &tag_sent, const MyWordIdType word_id, const int max_threads)
+MyTagIdType BayesianHMM::samplingTthTag(const int t, const std::vector<MyTagIdType> &tag_sent, const MyWordIdType word_id, const int max_threads, const bool sampling)
 {
     std::vector<double> scores(tag_size_, 0.0);
     double sum = 0.0;
     #ifdef _OPENMP
-    #pragma omp declare reduction(vec_double_plus: std::vector<double>: std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), std::plus <double>())) initializer(omp_priv = omp_orig)
-    #pragma omp parallel for reduction(+: sum) reduction(vec_double_plus: scores) num_threads(max_threads)
+    #pragma omp parallel for reduction(+: sum) num_threads(max_threads)
     #endif
     for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
     {
-        double score = this->calcTagPosteriorScore(static_cast<MyTagIdType>(k), t, tag_sent, word_id);
+        double score = this->calcTagPosteriorScore(static_cast<MyTagIdType>(k), t, tag_sent, word_id, sampling);
         scores[k] = score;
         sum += score;
     }
+
     std::uniform_real_distribution<double> dist(0.0, sum);
     double r = dist(random_generator_);
-    sum = 0.0;
     int sampled_k = -1;
-    for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
+    if (sampling)
     {
-        sum += scores[k];
-        if (sum >= r)
+        sum = 0.0;
+        for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
         {
-            sampled_k = k;
-            break;
+            sum += scores[k];
+            if (sum >= r)
+            {
+                sampled_k = k;
+                break;
+            }
+        }
+    } else {
+        double max_score = 0.0;
+        for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
+        {
+            if (max_score < scores[k])
+            {
+                max_score = scores[k];
+                sampled_k = k;
+            }
         }
     }
     assert(sampled_k >= SPECIAL_TAG_SIZE);
@@ -158,6 +171,37 @@ void BayesianHMM::gibbsSamplingTthTag(const int t, std::vector<MyTagIdType> &tag
         std::vector<MyTagIdType> ngram(n_);
         copy(tag_sent.begin() + t + i, tag_sent.begin() + t + i + n_, ngram.begin());
         this->addNgramParameter(ngram, (n_ - i));
+    }
+}
+
+void BayesianHMM::gibbsSamplingAtSent(std::vector<MyTagIdType> &tag_sent, const std::vector<MyWordIdType> &word_sent, const int max_threads)
+{
+    assert(word_sent.size() == tag_sent.size());
+    int sent_size = static_cast<int>(tag_sent.size());
+
+    // tag に関連するパラメータの削除
+    for (int t = 0; t < sent_size - 2 * (n_ - 1); t++)
+    {
+        std::vector<MyTagIdType> ngram(n_);
+        copy(tag_sent.begin() + t, tag_sent.begin() + t + n_, ngram.begin());
+        this->removeNgramParameter(ngram, n_);
+        this->removeWordEmissionParameter(word_sent[t + 2], tag_sent[t + 2]);
+    }
+
+    // サンプリング
+    for (int t = 0; t < sent_size - 2 * (n_ - 1); t++)
+    {
+        MyTagIdType sampled_k = this->samplingTthTag(t, tag_sent, word_sent[t + 2], max_threads);
+        tag_sent[t + 2] = sampled_k;
+    }
+
+    // tag に関連するパラメータの追加
+    for (int t = 0; t < sent_size - 2 * (n_ - 1); t++)
+    {
+        std::vector<MyTagIdType> ngram(n_);
+        copy(tag_sent.begin() + t, tag_sent.begin() + t + n_, ngram.begin());
+        this->addWordEmissionParameter(word_sent[t + 2], tag_sent[t + 2]);
+        this->addNgramParameter(ngram, n_);
     }
 }
 
@@ -216,7 +260,7 @@ double BayesianHMM::calcTagNgramProb(const std::vector<MyTagIdType> &ngram, cons
     return p;
 }
 
-double BayesianHMM::calcTagPosteriorScore(const MyTagIdType k, const int t, const std::vector<MyTagIdType> &tag_sent, const MyWordIdType word_id) const
+double BayesianHMM::calcTagPosteriorScore(const MyTagIdType k, const int t, const std::vector<MyTagIdType> &tag_sent, const MyWordIdType word_id, const bool sampling) const
 {
     double word_prob = this->calcWordProbGivenTag(word_id, k);
 
@@ -224,41 +268,45 @@ double BayesianHMM::calcTagPosteriorScore(const MyTagIdType k, const int t, cons
     copy(tag_sent.begin() + t, tag_sent.begin() + t + 2, ngram.begin());
     double ngram_prob1 = this->calcTagNgramProb(ngram);
 
-    double add_denominator = 0.0;
-    double add_numerator = 0.0;
-    if (tag_sent[t] == tag_sent[t + 1] && tag_sent[t] == tag_sent[t + 2])
+    double score = word_prob * ngram_prob1;
+    if (sampling)
     {
-        add_denominator += 1.0;
-        if (tag_sent[t] == tag_sent[t + 3])
+        double add_denominator = 0.0;
+        double add_numerator = 0.0;
+        if (tag_sent[t] == tag_sent[t + 1] && tag_sent[t] == tag_sent[t + 2])
         {
-            add_numerator += 1.0;
+            add_denominator += 1.0;
+            if (tag_sent[t] == tag_sent[t + 3])
+            {
+                add_numerator += 1.0;
+            }
         }
-    }
-    copy(tag_sent.begin() + t + 1, tag_sent.begin() + t + 3, ngram.begin());
-    double ngram_prob2 = this->calcTagNgramProb(ngram, add_denominator, add_numerator);
+        copy(tag_sent.begin() + t + 1, tag_sent.begin() + t + 3, ngram.begin());
+        double ngram_prob2 = this->calcTagNgramProb(ngram, add_denominator, add_numerator);
+        score *= ngram_prob2;
 
-    add_denominator = 0.0;
-    add_numerator = 0.0;
-    if (tag_sent[t + 1] == tag_sent[t + 2] && tag_sent[t + 1] == tag_sent[t + 3])
-    {
-        add_denominator += 1.0;
-        if (tag_sent[t] == tag_sent[t + 4])
+        add_denominator = 0.0;
+        add_numerator = 0.0;
+        if (tag_sent[t + 1] == tag_sent[t + 2] && tag_sent[t + 1] == tag_sent[t + 3])
         {
-            add_numerator += 1.0;
+            add_denominator += 1.0;
+            if (tag_sent[t] == tag_sent[t + 4])
+            {
+                add_numerator += 1.0;
+            }
         }
-    }
-    if (tag_sent[t] == tag_sent[t + 2] && tag_sent[t + 1] == tag_sent[t + 3])
-    {
-        add_denominator += 1.0;
-        if (tag_sent[t] == tag_sent[t + 4])
+        if (tag_sent[t] == tag_sent[t + 2] && tag_sent[t + 1] == tag_sent[t + 3])
         {
-            add_numerator += 1.0;
+            add_denominator += 1.0;
+            if (tag_sent[t] == tag_sent[t + 4])
+            {
+                add_numerator += 1.0;
+            }
         }
+        copy(tag_sent.begin() + t + 2, tag_sent.begin() + t + 4, ngram.begin());
+        double ngram_prob3 = this->calcTagNgramProb(ngram, add_denominator, add_numerator);
+        score *= ngram_prob3;
     }
-    copy(tag_sent.begin() + t + 2, tag_sent.begin() + t + 4, ngram.begin());
-    double ngram_prob3 = this->calcTagNgramProb(ngram, add_denominator, add_numerator);
-
-    double score = word_prob * ngram_prob1 * ngram_prob2 * ngram_prob3;
     return score;
 }
 
@@ -278,6 +326,7 @@ void BayesianHMM::Train(const std::vector<std::vector<MyWordIdType>> &corpus, st
     {
         const unsigned int bar_width = 40;
         ProgressBar progress_bar(corpus.size(), bar_width);
+        progress_bar.display();
 
         std::vector<int> rand_vec(corpus.size());
         std::iota(rand_vec.begin(), rand_vec.end(), 0);
@@ -285,23 +334,61 @@ void BayesianHMM::Train(const std::vector<std::vector<MyWordIdType>> &corpus, st
         for (int i = 0; i < static_cast<int>(corpus.size()); i++)
         {
             ++progress_bar;
-            progress_bar.display();
+            if (i % static_cast<int>(static_cast<double>(corpus.size()) / 10.0) == 0)
+            {
+                progress_bar.display();
+            }
 
             const int r = rand_vec[i];
-            for (int t = 0; t < static_cast<int>(corpus[r].size()) - 2 * (n_ - 1); t++)
-            {
-                this->gibbsSamplingTthTag(t, tag_corpus[r], corpus[r], max_threads);
-            }
+            this->gibbsSamplingAtSent(tag_corpus[r], corpus[r], max_threads);
+            // for (int t = 0; t < static_cast<int>(corpus[r].size()) - 2 * (n_ - 1); t++)
+            // {
+            //     this->gibbsSamplingTthTag(t, tag_corpus[r], corpus[r], max_threads);
+            // }
         }
         progress_bar.done();
 
-        const double score = this->CalcTagScoreGivenCorpus(corpus, tag_corpus, max_threads);
-        std::cout << "epoch = " << e << " "
-                  << "score = " << score << " (lower is better)" << std::endl;
+        if (e % static_cast<int>(static_cast<double>(epoch) / 10.0) == 0) {
+            const double score = this->CalcTagScoreGivenCorpus(corpus, tag_corpus, max_threads);
+            std::cout << "epoch = " << e << " "
+                    << "score = " << score << " (lower is better)" << std::endl;
+        }
     }
 }
 
-//
+// TODO: viterbi decoding に拡張する
+void BayesianHMM::Test(const std::vector<std::vector<MyWordIdType>> &corpus, std::vector<std::vector<MyTagIdType>> &tag_corpus, const int max_threads)
+{
+    if (corpus.size() != tag_corpus.size())
+    {
+        std::cerr << "corpus size error" << std::endl;
+        std::cerr << "corpus size = " << corpus.size() << " tag_corpus size = " << tag_corpus.size() << std::endl;
+        exit(1);
+    }
+
+    const unsigned int bar_width = 40;
+    ProgressBar progress_bar(corpus.size(), bar_width);
+
+    for (int i = 0; i < static_cast<int>(corpus.size()); i++)
+    {
+        ++progress_bar;
+        progress_bar.display();
+
+        for (int t = 0; t < static_cast<int>(corpus[i].size()) - 2 * (n_ - 1); t++)
+        {
+            assert(t >= 0);
+            assert(t + 2 < static_cast<int>(tag_corpus[i].size()));
+            assert(corpus[i].size() == tag_corpus[i].size());
+            MyTagIdType sampled_k = this->samplingTthTag(t, tag_corpus[i], corpus[i][t + 2], max_threads, false);
+            tag_corpus[i][t + 2] = sampled_k;
+        }
+    }
+    progress_bar.done();
+
+    const double score = this->CalcTagScoreGivenCorpus(corpus, tag_corpus, max_threads);
+    std::cout << "score = " << score << " (lower is better)" << std::endl;
+}
+
 // スコアをエントロピーにすると下がっているようには見えなかった。
 // エントロピーの計算 p * log(p)
 // lower is better
@@ -322,7 +409,7 @@ double BayesianHMM::CalcTagScoreGivenCorpus(const std::vector<std::vector<MyWord
             for (int k = SPECIAL_TAG_SIZE; k < tag_size_; k++)
             {
                 MyWordIdType word_id = corpus[i][t + (n_ - 1)];
-                double score = this->calcTagPosteriorScore(static_cast<MyTagIdType>(k), t, tag_corpus[i], word_id);
+                double score = this->calcTagPosteriorScore(static_cast<MyTagIdType>(k), t, tag_corpus[i], word_id, false);
                 scores[k] = score;
                 sum += score;
             }
